@@ -10,8 +10,8 @@ registry = Registry()
 for path in Path("schema").rglob("*.json"):
     contents = json.loads(path.read_text())
     resource = Resource.from_contents(contents, default_specification=DRAFT202012)
-    registry = registry.with_resource(contents.get("$id", path.as_uri()), resource)
-
+    registry = registry.with_resource(contents.get("$id", path.resolve().as_uri()), resource)
+    
 root = json.loads(Path("schema/playbook.json").read_text())
 Validator = validator_for(root)
 validator = Validator(root, registry=registry)
