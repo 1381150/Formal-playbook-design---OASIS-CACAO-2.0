@@ -1,6 +1,6 @@
 {
-    "type": " ",
-    "spec_version": " ",
-    "id": "playbook--<7496564c-504e-4555-8966-d4f52bb64814>", 
+    "type": "playbook",
+    "spec_version":"cacao-2.0",
+    "id": "playbook--7496564c-504e-4555-8966-d4f52bb64814", 
     "name": "CACAO Playbook Design"
 }
