@@ -8,7 +8,7 @@
     "modified": "2026-11-20T12:59:42.000Z",
     "playbook types": ["investigation", "mitigation"],
     "playbook_activities": ["identify-indicators", "analyze-collected-data", "eliminate-risk", "restrict-access"],
-    "created_by": "identity--3b9e7d52-1c4a-4f68-9a0e-72d5c8e1f4a6",
+    "created_by": "identity--d6275807-dec4-4b56-81bb-5455897709be",
     "priority": 10,
     "severity": 70,
     "impact": 60,
