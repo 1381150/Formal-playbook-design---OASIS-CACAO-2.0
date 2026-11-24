@@ -284,6 +284,13 @@
       "type": "group",
       "name": "SOC On-Call Approvers",
       "description": "Humans authorised to approve account-level actions."
+    },
+    "group--...": {
+      "security-category--playbook--7496564c-504e-4555-8966-d4f52bb64814": {
+      "type": "security-category",
+      "name": "CACAO Playbook Design",
+      "description": "Triggered by a webhook when a user reports a suspicious email. Enriches the indicator and the user, scores the threat, purges the email, and requires human approval before account actions on high-criticality users.",
+      "category": ["orchestration"]
     }
   },
   "target_definitions": {
