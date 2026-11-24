@@ -302,3 +302,4 @@
     "http-api--e91c6b34-7d2a-4f08-b3e5-4a0f9d6c8e57": { "type": "http-api", "name": "Identity provider", "description": "Session revocation and account disable", "address": { "url": ["https://idp.example.org/"] } }
   }
 }
+}
