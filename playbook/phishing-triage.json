@@ -3,6 +3,289 @@
     "spec_version": "cacao-2.0",
     "id": "playbook--7496564c-504e-4555-8966-d4f52bb64814", 
     "name": "CACAO Playbook Design",
+    "description": "Triggered by a webhook when a user reports a suspicious email. Enriches the indicator and the user, scores the threat, purges the email, and requires human approval before account actions on high-criticality users.",
     "created": "2026-11-20T12:59:42Z",
-    "modified": "2026-11-20T12:59:42Z" 
+    "modified": "2026-11-20T12:59:42Z",
+    "playbook types": ["Investigation", "mitigation"],
+    "labels": ["phishing", "account-containment", "human-in-the-loop"],
+    "external_references": [
+     {
+      "name": "MITRE ATT&CK T1566 Phishing",
+      "url": "https://attack.mitre.org/techniques/T1566/",
+      "external_id": "T1566"
+    }
+  ],
+  "playbook_variables": {
+    "__event_id__": { "type": "string", "description": "Webhook payload: report/event ID", "constant": false, "external": true },
+    "__reporter_upn__": { "type": "string", "description": "Webhook payload: reporting user's UPN/email", "constant": false, "external": true },
+    "__message_id__": { "type": "string", "description": "Webhook payload: reported message ID", "constant": false, "external": true }
+  },
+  "workflow_start": "start--c1a7e5d4-2b3f-4a96-8d10-5e7f9b2c3a41",
+  "workflow_exception": "action--5b8a2e1d-3c7f-4906-b1e4-a9d6f0c2b378",
+  "workflow": {
+    "start--c1a7e5d4-2b3f-4a96-8d10-5e7f9b2c3a41": {
+      "type": "start",
+      "name": "Start: webhook received",
+      "description": "Triggered by an HTTP POST webhook from the mail-report button or SIEM. The orchestrator's listener maps the JSON body to __event_id__, __reporter_upn__ and __message_id__.",
+      "on_completion": "action--0d4b8f26-7e1a-4c35-b9d2-3a6e5f1c8b70"
+    },
+    "action--0d4b8f26-7e1a-4c35-b9d2-3a6e5f1c8b70": {
+      "type": "action",
+      "name": "Ingest report details",
+      "description": "Fetch the full report so sender and URL are known.",
+      "timeout": 30000,
+      "step_variables": {
+        "__sender_address__": { "type": "string", "description": "Sender of the reported email", "constant": false, "external": false },
+        "__flagged_url__": { "type": "string", "description": "First URL found in the email", "constant": false, "external": false }
+      },
+      "commands": [
+        {
+          "type": "http-api",
+          "description": "Get report from SIEM/mail platform",
+          "command": "GET /api/v1/reports/__event_id__:value HTTP/1.1",
+          "playbook_activity": "analyze-collected-data"
+        }
+      ],
+      "targets": ["http-api--1b4e8a73-2d6c-4f90-b5a7-c3e9d1f60a28"],
+      "out_args": ["__sender_address__", "__flagged_url__"],
+      "on_success": "action--5e2a9c71-3d8b-4f04-a6e7-1b9c4d0f2a83",
+      "on_failure": "action--5b8a2e1d-3c7f-4906-b1e4-a9d6f0c2b378"
+    },
+    "action--5e2a9c71-3d8b-4f04-a6e7-1b9c4d0f2a83": {
+      "type": "action",
+      "name": "Enrich: threat intelligence",
+      "description": "Look up the URL in the threat intel platform and return a 0-100 score.",
+      "timeout": 30000,
+      "step_variables": {
+        "__threat_score__": { "type": "integer", "description": "Threat score 0-100", "constant": false, "external": false }
+      },
+      "commands": [
+        {
+          "type": "http-api",
+          "description": "Query TI platform",
+          "command": "POST /api/v1/lookup HTTP/1.1",
+          "content": "{\"indicator_type\": \"url\", \"value\": \"__flagged_url__:value\"}",
+          "headers": { "Content-Type": ["application/json"] },
+          "playbook_activity": "identify-indicators"
+        }
+      ],
+      "targets": ["http-api--6f2d9c05-8a1b-4e37-9c4d-b0a5e7f31d82"],
+      "out_args": ["__threat_score__"],
+      "on_success": "action--9b6f3e18-4a2c-4d57-8e91-c0a7d5b3f246",
+      "on_failure": "action--5b8a2e1d-3c7f-4906-b1e4-a9d6f0c2b378"
+    },
+    "action--9b6f3e18-4a2c-4d57-8e91-c0a7d5b3f246": {
+      "type": "action",
+      "name": "Enrich: directory / CMDB",
+      "description": "Look up the reporting user's criticality (low / medium / high).",
+      "timeout": 30000,
+      "step_variables": {
+        "__asset_criticality__": { "type": "string", "description": "low, medium or high", "constant": false, "external": false }
+      },
+      "commands": [
+        {
+          "type": "http-api",
+          "description": "Query AD/CMDB",
+          "command": "GET /api/v1/users/__reporter_upn__:value?fields=criticality HTTP/1.1",
+          "playbook_activity": "analyze-collected-data"
+        }
+      ],
+      "targets": ["http-api--a3c7e150-4b9d-4a62-8e0f-5d1b9c7a2e46"],
+      "out_args": ["__asset_criticality__"],
+      "on_success": "if-condition--2c8d5a93-6f1e-4b70-a3c4-e9b1d7f05a68",
+      "on_failure": "action--5b8a2e1d-3c7f-4906-b1e4-a9d6f0c2b378"
+    },
+    "if-condition--2c8d5a93-6f1e-4b70-a3c4-e9b1d7f05a68": {
+      "type": "if-condition",
+      "name": "Decision: is it malicious?",
+      "description": "Threshold of 70 is a PLACEHOLDER. Justify and document your own.",
+      "condition": "__threat_score__:value >= 70",
+      "on_true": "action--e4f09b72-1a5c-4d83-96b0-7c2d8e3a5f19",
+      "on_false": "action--7a1e4c05-9d3b-4682-b5f8-2e6c0a9d1b34",
+      "on_completion": "end--7c0a5e38-4d1b-4e92-a6f7-9b3c8d2e1a05"
+    },
+    "action--7a1e4c05-9d3b-4682-b5f8-2e6c0a9d1b34": {
+      "type": "action",
+      "name": "Notify SOC: low confidence",
+      "description": "Not confirmed malicious: send to analysts for human review.",
+      "commands": [
+        {
+          "type": "http-api",
+          "description": "Post to SOC channel",
+          "command": "POST /api/v1/messages HTTP/1.1",
+          "content": "{\"text\": \"Phishing report __event_id__:value scored below threshold. Analyst review needed.\"}",
+          "headers": { "Content-Type": ["application/json"] }
+        }
+      ],
+      "targets": ["http-api--57e0a2d8-9f4c-4b13-86a5-2c8d3e1f7b94"],
+      "on_completion": "end--3a5c8e17-0b9d-4f62-b4a1-7d2e6f9c0b85"
+    },
+    "action--e4f09b72-1a5c-4d83-96b0-7c2d8e3a5f19": {
+      "type": "action",
+      "name": "Email action: quarantine and remove",
+      "description": "Find all copies across mailboxes, quarantine, then soft-delete (recoverable).",
+      "timeout": 60000,
+      "commands": [
+        {
+          "type": "http-api",
+          "description": "Search and quarantine all copies",
+          "command": "POST /api/v1/mail/quarantine HTTP/1.1",
+          "content": "{\"sender\": \"__sender_address__:value\", \"url\": \"__flagged_url__:value\", \"scope\": \"all-mailboxes\"}",
+          "headers": { "Content-Type": ["application/json"] },
+          "playbook_activity": "eliminate-risk"
+        },
+        {
+          "type": "http-api",
+          "description": "Soft-delete from affected mailboxes",
+          "command": "POST /api/v1/mail/soft-delete HTTP/1.1",
+          "content": "{\"message_id\": \"__message_id__:value\", \"scope\": \"affected-mailboxes\"}",
+          "headers": { "Content-Type": ["application/json"] },
+          "playbook_activity": "eliminate-risk"
+        }
+      ],
+      "targets": ["http-api--d8b14f96-0c3a-4e75-a2d9-7f6e1c5b3a01"],
+      "on_success": "if-condition--6b3d7e24-8c0f-4a15-9e72-d1a4f5b8c093",
+      "on_failure": "action--5b8a2e1d-3c7f-4906-b1e4-a9d6f0c2b378"
+    },
+    "if-condition--6b3d7e24-8c0f-4a15-9e72-d1a4f5b8c093": {
+      "type": "if-condition",
+      "name": "Decision: high-criticality user?",
+      "condition": "__asset_criticality__:value = 'high'",
+      "on_true": "action--a8c25f61-0e7b-4d39-b4a2-5f1d9c3e7b60",
+      "on_false": "end--8d1f4b60-5a3e-4c79-9b2d-e0c7a6f3d148",
+      "on_completion": "end--7c0a5e38-4d1b-4e92-a6f7-9b3c8d2e1a05"
+    },
+    "action--a8c25f61-0e7b-4d39-b4a2-5f1d9c3e7b60": {
+      "type": "action",
+      "name": "HitL: send approval request",
+      "description": "Interactive Slack/Teams message with Approve / Decline buttons. The button callback is handled by your orchestrator.",
+      "commands": [
+        {
+          "type": "http-api",
+          "description": "Post approval prompt",
+          "command": "POST /api/v1/approvals HTTP/1.1",
+          "content": "{\"text\": \"Approve revoking sessions and disabling __reporter_upn__:value? Threat score: __threat_score__:value\", \"actions\": [\"approve\", \"decline\"]}",
+          "headers": { "Content-Type": ["application/json"] }
+        }
+      ],
+      "targets": ["http-api--57e0a2d8-9f4c-4b13-86a5-2c8d3e1f7b94"],
+      "on_completion": "action--1f7e3b98-5a2d-4c64-8b0e-9d6a2c4f7e15"
+    },
+    "action--1f7e3b98-5a2d-4c64-8b0e-9d6a2c4f7e15": {
+      "type": "action",
+      "name": "HitL: await approver decision",
+      "description": "Waits for a human. No answer within 15 minutes is a failure, and the safe default is NO account action.",
+      "timeout": 900000,
+      "step_variables": {
+        "__approval_decision__": { "type": "string", "description": "approved or declined", "constant": false, "external": false }
+      },
+      "commands": [
+        {
+          "type": "manual",
+          "command": "Review the approval request and record 'approved' or 'declined'."
+        }
+      ],
+      "agent": "group--40b7d3e9-5c1a-4826-9f3b-8d2e6a0c1f75",
+      "out_args": ["__approval_decision__"],
+      "on_success": "if-condition--d3a96c50-2b8e-4f71-a0c5-8e4b1f7d2a39",
+      "on_failure": "action--f2e6a4b9-7c1d-4035-8a9e-6b3d0c5f1e72"
+    },
+    "if-condition--d3a96c50-2b8e-4f71-a0c5-8e4b1f7d2a39": {
+      "type": "if-condition",
+      "name": "Decision: approved?",
+      "condition": "__approval_decision__:value = 'approved'",
+      "on_true": "action--4c9a1e87-6d3f-4b25-92e8-0a7b5d1c3f64",
+      "on_false": "action--f2e6a4b9-7c1d-4035-8a9e-6b3d0c5f1e72",
+      "on_completion": "end--7c0a5e38-4d1b-4e92-a6f7-9b3c8d2e1a05"
+    },
+    "action--4c9a1e87-6d3f-4b25-92e8-0a7b5d1c3f64": {
+      "type": "action",
+      "name": "Account action: revoke sessions and disable",
+      "timeout": 60000,
+      "commands": [
+        {
+          "type": "http-api",
+          "description": "Revoke active sessions",
+          "command": "POST /api/v1/users/__reporter_upn__:value/revoke-sessions HTTP/1.1",
+          "playbook_activity": "restrict-access"
+        },
+        {
+          "type": "http-api",
+          "description": "Disable account",
+          "command": "POST /api/v1/users/__reporter_upn__:value/disable HTTP/1.1",
+          "playbook_activity": "restrict-access"
+        }
+      ],
+      "targets": ["http-api--e91c6b34-7d2a-4f08-b3e5-4a0f9d6c8e57"],
+      "on_success": "action--b05d7f32-9e4a-4c18-a6d3-3e1f8b2c5a97",
+      "on_failure": "action--5b8a2e1d-3c7f-4906-b1e4-a9d6f0c2b378"
+    },
+    "action--b05d7f32-9e4a-4c18-a6d3-3e1f8b2c5a97": {
+      "type": "action",
+      "name": "Write audit record",
+      "commands": [
+        {
+          "type": "http-api",
+          "description": "Log decision, approver and action to SIEM",
+          "command": "POST /api/v1/audit HTTP/1.1",
+          "content": "{\"event\": \"__event_id__:value\", \"decision\": \"__approval_decision__:value\", \"score\": \"__threat_score__:value\"}",
+          "headers": { "Content-Type": ["application/json"] }
+        }
+      ],
+      "targets": ["http-api--1b4e8a73-2d6c-4f90-b5a7-c3e9d1f60a28"],
+      "on_completion": "end--c7e2a935-1d4b-4a08-8f63-5b9d1e7c2a40"
+    },
+    "action--f2e6a4b9-7c1d-4035-8a9e-6b3d0c5f1e72": {
+      "type": "action",
+      "name": "Notify: declined or timed out",
+      "description": "No account action taken.",
+      "commands": [
+        {
+          "type": "http-api",
+          "description": "Post outcome to SOC channel",
+          "command": "POST /api/v1/messages HTTP/1.1",
+          "content": "{\"text\": \"Approval declined or timed out for __event_id__:value. No account action taken.\"}",
+          "headers": { "Content-Type": ["application/json"] }
+        }
+      ],
+      "targets": ["http-api--57e0a2d8-9f4c-4b13-86a5-2c8d3e1f7b94"],
+      "on_completion": "end--0e9b6d43-8a2f-4c51-a7d0-4f1c3b8e5d26"
+    },
+    "action--5b8a2e1d-3c7f-4906-b1e4-a9d6f0c2b378": {
+      "type": "action",
+      "name": "Exception handler: escalate to SOC",
+      "commands": [
+        {
+          "type": "http-api",
+          "description": "Alert on-call that the workflow failed",
+          "command": "POST /api/v1/messages HTTP/1.1",
+          "content": "{\"text\": \"Phishing playbook failed for __event_id__:value. Manual intervention required.\"}",
+          "headers": { "Content-Type": ["application/json"] }
+        }
+      ],
+      "targets": ["http-api--57e0a2d8-9f4c-4b13-86a5-2c8d3e1f7b94"],
+      "on_completion": "end--92c4f7a6-0d5e-4b13-8c8a-1e3f6b9d2a57"
+    },
+    "end--3a5c8e17-0b9d-4f62-b4a1-7d2e6f9c0b85": { "type": "end", "name": "End: sent for analyst review" },
+    "end--8d1f4b60-5a3e-4c79-9b2d-e0c7a6f3d148": { "type": "end", "name": "End: contained automatically" },
+    "end--c7e2a935-1d4b-4a08-8f63-5b9d1e7c2a40": { "type": "end", "name": "End: account action completed" },
+    "end--0e9b6d43-8a2f-4c51-a7d0-4f1c3b8e5d26": { "type": "end", "name": "End: approval declined or timed out" },
+    "end--92c4f7a6-0d5e-4b13-8c8a-1e3f6b9d2a57": { "type": "end", "name": "End: exception handled" },
+    "end--7c0a5e38-4d1b-4e92-a6f7-9b3c8d2e1a05": { "type": "end", "name": "End: workflow complete" }
+  },
+  "agent_definitions": {
+    "group--40b7d3e9-5c1a-4826-9f3b-8d2e6a0c1f75": {
+      "type": "group",
+      "name": "SOC On-Call Approvers",
+      "description": "Humans authorised to approve account-level actions."
+    }
+  },
+  "target_definitions": {
+    "http-api--1b4e8a73-2d6c-4f90-b5a7-c3e9d1f60a28": { "type": "http-api", "name": "SIEM / report source", "description": "Source of reports and audit log", "address": { "url": ["https://siem.example.org/"] } },
+    "http-api--6f2d9c05-8a1b-4e37-9c4d-b0a5e7f31d82": { "type": "http-api", "name": "Threat intel platform", "description": "Indicator reputation lookups", "address": { "url": ["https://ti.example.org/"] } },
+    "http-api--a3c7e150-4b9d-4a62-8e0f-5d1b9c7a2e46": { "type": "http-api", "name": "Directory / CMDB", "description": "User and asset criticality", "address": { "url": ["https://cmdb.example.org/"] } },
+    "http-api--d8b14f96-0c3a-4e75-a2d9-7f6e1c5b3a01": { "type": "http-api", "name": "Mail platform", "description": "Quarantine and delete messages", "address": { "url": ["https://mail.example.org/"] } },
+    "http-api--57e0a2d8-9f4c-4b13-86a5-2c8d3e1f7b94": { "type": "http-api", "name": "Slack/Teams webhook", "description": "SOC channel and approval prompts", "address": { "url": ["https://chat.example.org/"] } },
+    "http-api--e91c6b34-7d2a-4f08-b3e5-4a0f9d6c8e57": { "type": "http-api", "name": "Identity provider", "description": "Session revocation and account disable", "address": { "url": ["https://idp.example.org/"] } }
+  }
 }
