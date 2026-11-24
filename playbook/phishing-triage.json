@@ -179,6 +179,7 @@
         }
       ],
       "targets": ["http-api--57e0a2d8-9f4c-4b13-86a5-2c8d3e1f7b94"],
+      "agent": "playbook--7496564c-504e-4555-8966-d4f52bb64814",
       "on_completion": "action--1f7e3b98-5a2d-4c64-8b0e-9d6a2c4f7e15"
     },
     "action--1f7e3b98-5a2d-4c64-8b0e-9d6a2c4f7e15": {
@@ -227,6 +228,7 @@
         }
       ],
       "targets": ["http-api--e91c6b34-7d2a-4f08-b3e5-4a0f9d6c8e57"],
+      "agent": "playbook--7496564c-504e-4555-8966-d4f52bb64814",
       "on_success": "action--b05d7f32-9e4a-4c18-a6d3-3e1f8b2c5a97",
       "on_failure": "action--5b8a2e1d-3c7f-4906-b1e4-a9d6f0c2b378"
     },
@@ -243,6 +245,7 @@
         }
       ],
       "targets": ["http-api--1b4e8a73-2d6c-4f90-b5a7-c3e9d1f60a28"],
+        "agent": "playbook--7496564c-504e-4555-8966-d4f52bb64814",
       "on_completion": "end--c7e2a935-1d4b-4a08-8f63-5b9d1e7c2a40"
     },
     "action--f2e6a4b9-7c1d-4035-8a9e-6b3d0c5f1e72": {
