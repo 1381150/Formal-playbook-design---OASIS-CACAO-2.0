@@ -7,6 +7,11 @@
     "created": "2026-11-20T12:59:42Z",
     "modified": "2026-11-20T12:59:42Z",
     "playbook types": ["Investigation", "mitigation"],
+    "playbook_activities": ["identify-indicators", "analyze-collected-data", "eliminate-risk", "restrict-access"],
+    "created_by": "identity--3b9e7d52-1c4a-4f68-9a0e-72d5c8e1f4a6",
+    "priority": 10,
+    "severity": 70,
+    "impact": 60,
     "labels": ["phishing", "account-containment", "human-in-the-loop"],
     "external_references": [
      {
