@@ -254,7 +254,7 @@
         }
       ],
       "targets": ["http-api--57e0a2d8-9f4c-4b13-86a5-2c8d3e1f7b94"],
-      "agent": "__LOCAL_AGENT__",
+      "agent": "playbook--7496564c-504e-4555-8966-d4f52bb64814",
       "on_completion": "end--0e9b6d43-8a2f-4c51-a7d0-4f1c3b8e5d26"
     },
     "action--5b8a2e1d-3c7f-4906-b1e4-a9d6f0c2b378": {
